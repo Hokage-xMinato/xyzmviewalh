@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_margin="4dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="@drawable/card_bg"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground">
+
+        <ImageView
+            android:id="@+id/cardPoster"
+            android:layout_width="110dp"
+            android:layout_height="165dp"
+            android:scaleType="centerCrop"
+            android:background="#222222"
+            android:contentDescription="Poster" />
+
+        <TextView
+            android:id="@+id/cardTitle"
+            android:layout_width="110dp"
+            android:layout_height="wrap_content"
+            android:textColor="#e5e5e5"
+            android:textSize="11sp"
+            android:fontFamily="sans-serif-medium"
+            android:paddingHorizontal="6dp"
+            android:paddingTop="5dp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/cardDetail"
+            android:layout_width="110dp"
+            android:layout_height="wrap_content"
+            android:textColor="#aaaaaa"
+            android:textSize="10sp"
+            android:paddingHorizontal="6dp"
+            android:paddingBottom="6dp"
+            android:paddingTop="2dp" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/removeBtn"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="4dp"
+        android:background="@drawable/remove_btn_bg"
+        android:src="@drawable/ic_close"
+        android:tint="#ffffff"
+        android:contentDescription="Remove"
+        android:scaleType="fitCenter"
+        android:padding="4dp"
+        android:visibility="gone" />
+
+</FrameLayout>

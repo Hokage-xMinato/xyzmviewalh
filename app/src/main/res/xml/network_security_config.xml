@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Config for Smarterz
+    Only HTTPS is permitted. No cleartext traffic allowed anywhere.
+    The WebView ad-blocking is done in Kotlin code (SmartWebViewClient).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
