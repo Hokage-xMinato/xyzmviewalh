@@ -31,8 +31,7 @@
                     android:textColor="#E50914"
                     android:textSize="20sp"
                     android:textStyle="bold"
-                    android:paddingEnd="10dp"
-                    android:fontFamily="sans-serif-condensed" />
+                    android:paddingEnd="10dp" />
 
                 <EditText
                     android:id="@+id/searchInput"
@@ -40,7 +39,7 @@
                     android:layout_height="40dp"
                     android:layout_weight="1"
                     android:background="#1a1a1a"
-                    android:hint="Search movies or TV shows…"
+                    android:hint="Search movies or TV shows"
                     android:textColorHint="#888888"
                     android:textColor="#e5e5e5"
                     android:textSize="14sp"
@@ -83,7 +82,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="No recent items yet. Search for a movie or show!"
-                    android:textColor="#888"
+                    android:textColor="#888888"
                     android:textSize="13sp"
                     android:visibility="gone" />
 
@@ -130,6 +129,7 @@
 
                     <Button
                         android:id="@+id/prevPageBtn"
+                        style="@style/Widget.MaterialComponents.Button"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
                         android:text="Prev"
@@ -147,6 +147,7 @@
 
                     <Button
                         android:id="@+id/nextPageBtn"
+                        style="@style/Widget.MaterialComponents.Button"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
                         android:text="Next"
@@ -239,9 +240,10 @@
 
                     <Button
                         android:id="@+id/playButton"
+                        style="@style/Widget.MaterialComponents.Button"
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
-                        android:text="▶  Play"
+                        android:text="Play"
                         android:textSize="16sp"
                         android:textStyle="bold"
                         android:backgroundTint="#E50914"
@@ -289,15 +291,13 @@
                     android:layout_width="0dp"
                     android:layout_height="36dp"
                     android:layout_weight="1"
-                    android:backgroundTint="#e5e5e5"
                     android:layout_marginEnd="6dp" />
 
                 <Spinner
                     android:id="@+id/episodeSpinner"
                     android:layout_width="0dp"
                     android:layout_height="36dp"
-                    android:layout_weight="1"
-                    android:backgroundTint="#e5e5e5" />
+                    android:layout_weight="1" />
             </LinearLayout>
 
             <!-- Prev / Label / Next row -->
@@ -309,9 +309,10 @@
 
                 <Button
                     android:id="@+id/prevEpisodeBtn"
+                    style="@style/Widget.MaterialComponents.Button"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
-                    android:text="◀ Prev"
+                    android:text="Prev"
                     android:textSize="12sp"
                     android:backgroundTint="#E50914"
                     android:layout_marginEnd="12dp" />
@@ -326,20 +327,22 @@
 
                 <Button
                     android:id="@+id/nextEpisodeBtn"
+                    style="@style/Widget.MaterialComponents.Button"
                     android:layout_width="wrap_content"
                     android:layout_height="36dp"
-                    android:text="Next ▶"
+                    android:text="Next"
                     android:textSize="12sp"
                     android:backgroundTint="#E50914" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Movie controls (empty placeholder, kept for symmetry) -->
-        <FrameLayout
+        <!-- Movie controls — must be LinearLayout to match MainActivity declaration -->
+        <LinearLayout
             android:id="@+id/movieControls"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
+            android:orientation="horizontal"
             android:visibility="gone" />
 
         <!-- Close button -->
