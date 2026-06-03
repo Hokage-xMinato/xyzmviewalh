@@ -20,7 +20,7 @@
             android:id="@+id/homeBtn"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_compass"
+            android:src="@android:drawable/ic_menu_home"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="#E50914"
             android:contentDescription="Home"
@@ -133,7 +133,7 @@
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/recentRecycler"
                     android:layout_width="match_parent"
-                    android:layout_height="220dp"
+                    android:layout_height="310dp"
                     android:visibility="gone"
                     android:clipToPadding="false"
                     android:paddingStart="12dp"
@@ -323,11 +323,11 @@
 
                             <Button
                                 android:id="@+id/playButton"
-                                style="@style/Widget.MaterialComponents.Button"
+                                style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
                                 android:layout_width="match_parent"
-                                android:layout_height="44dp"
+                                android:layout_height="48dp"
                                 android:text="▶  Play Now"
-                                android:textSize="14sp"
+                                android:textSize="15sp"
                                 android:textStyle="bold"
                                 android:backgroundTint="#E50914"
                                 android:textColor="#FFFFFF" />
@@ -372,7 +372,24 @@
             <WebView
                 android:id="@+id/playerWebView"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <!-- Loading overlay shown while WebView is loading -->
+            <FrameLayout
+                android:id="@+id/playerLoadingOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000"
+                android:visibility="visible">
+
+                <ProgressBar
+                    android:id="@+id/playerLoadingSpinner"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:layout_gravity="center"
+                    android:indeterminateTint="#E50914" />
+            </FrameLayout>
 
             <!-- Top bar inside player -->
             <LinearLayout
