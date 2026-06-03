@@ -560,6 +560,7 @@ class MainActivity : AppCompatActivity() {
             ?.hideSoftInputFromWindow(searchInput.windowToken, 0)
     }
 
+    @Suppress("DEPRECATION")
     override fun onBackPressed() {
         when {
             playerModal.visibility == View.VISIBLE -> closePlayer()
