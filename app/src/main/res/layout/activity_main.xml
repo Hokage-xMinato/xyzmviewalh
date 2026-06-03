@@ -41,7 +41,7 @@
                     android:layout_weight="1"
                     android:background="#1a1a1a"
                     android:hint="Search movies or TV shows…"
-                    android:hintTextColor="#888"
+                    android:textColorHint="#888888"
                     android:textColor="#e5e5e5"
                     android:textSize="14sp"
                     android:paddingStart="12dp"
