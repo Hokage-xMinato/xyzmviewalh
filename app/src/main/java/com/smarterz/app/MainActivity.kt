@@ -1,3 +1,4 @@
+
 package com.smarterz.app
 
 import android.annotation.SuppressLint
@@ -155,16 +156,19 @@ class TmdbApi {
 }
 
 // ─── WebViewClient ─────────────────────────────────────────────────────────────
-// Allow all domains needed for vidsrc to work (player, CDN, subtitles, etc.)
-// Only block non-http schemes that could open other apps.
+// Loads the embed URL inside an iframe wrapper so the WebView's own page stays
+// on a blob/data URL — this means any popup or redirect attempted by ad scripts
+// can never navigate the outer WebView away from the player.
 
 class SmartWebViewClient(
+    private val allowedHost: String,
     private val onPageReady: () -> Unit
 ) : WebViewClient() {
 
+    // These schemes should never open external apps
     private val BLOCKED_SCHEMES = setOf(
         "intent", "android-app", "market", "tel", "sms",
-        "mailto", "whatsapp", "tg"
+        "mailto", "whatsapp", "tg", "javascript"
     )
 
     override fun shouldInterceptRequest(
@@ -172,42 +176,60 @@ class SmartWebViewClient(
         request: WebResourceRequest?
     ): WebResourceResponse? {
         val scheme = request?.url?.scheme?.lowercase() ?: ""
-        // Block non-http schemes at resource level (data/blob allowed for media)
         if (scheme !in listOf("https", "http", "data", "blob")) {
             return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
         }
-        return null // allow everything else through
+        return null
     }
 
     override fun shouldOverrideUrlLoading(
         view: WebView?,
         request: WebResourceRequest?
     ): Boolean {
-        val scheme = request?.url?.scheme?.lowercase() ?: ""
-        // Block app-launch schemes but let all http/https navigate normally in the WebView
-        return scheme in BLOCKED_SCHEMES
+        val url = request?.url ?: return true
+        val scheme = url.scheme?.lowercase() ?: ""
+        // Block non-http schemes (app launches, etc.)
+        if (scheme in BLOCKED_SCHEMES) return true
+        // Block http/https navigations that are NOT to our allowed embed host
+        // This prevents ad redirects from hijacking the WebView
+        if (scheme == "http" || scheme == "https") {
+            val host = url.host?.lowercase() ?: ""
+            // Allow only the embed host and its subdomains
+            if (!host.endsWith(allowedHost) && host != allowedHost) {
+                return true // block navigation to outside domains
+            }
+        }
+        return false
     }
 
     @Suppress("DEPRECATION")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
         if (url == null) return true
-        val scheme = try { Uri.parse(url).scheme?.lowercase() ?: "" } catch (e: Exception) { "" }
-        return scheme in BLOCKED_SCHEMES
+        val uri = try { Uri.parse(url) } catch (e: Exception) { return true }
+        val scheme = uri.scheme?.lowercase() ?: ""
+        if (scheme in BLOCKED_SCHEMES) return true
+        if (scheme == "http" || scheme == "https") {
+            val host = uri.host?.lowercase() ?: ""
+            if (!host.endsWith(allowedHost) && host != allowedHost) return true
+        }
+        return false
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         super.onPageStarted(view, url, favicon)
+        // Suppress popups and alert dialogs from ad scripts
         view?.evaluateJavascript(
             """
+            window.open = function() { return null; };
             window.alert = function() {};
             window.confirm = function() { return false; };
+            window.prompt = function() { return null; };
             """.trimIndent(), null
         )
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
         super.onPageFinished(view, url)
-        // Hide loading overlay once page is done
         onPageReady()
     }
 
@@ -215,16 +237,15 @@ class SmartWebViewClient(
 }
 
 class SmartChromeClient : WebChromeClient() {
-    // Allow popups — vidsrc may open a player in a new window
     override fun onCreateWindow(
         view: WebView?, isDialog: Boolean,
         isUserGesture: Boolean, resultMsg: android.os.Message?
     ): Boolean {
-        // Load new window URL inside the same WebView
+        // Intercept popup windows — redirect their URL back into the same WebView
         val newWebView = WebView(view!!.context)
         newWebView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
-                view.loadUrl(req?.url?.toString() ?: return false)
+                // Don't actually navigate — just discard the popup
                 return true
             }
         }
@@ -234,22 +255,24 @@ class SmartChromeClient : WebChromeClient() {
         return true
     }
 
-    override fun onJsAlert(
-        view: WebView?, url: String?, message: String?,
-        result: JsResult?
-    ): Boolean { result?.cancel(); return true }
+    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+        result?.cancel(); return true
+    }
 
-    override fun onJsConfirm(
-        view: WebView?, url: String?, message: String?,
-        result: JsResult?
-    ): Boolean { result?.cancel(); return true }
+    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+        result?.cancel(); return true
+    }
+
+    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?): Boolean {
+        result?.cancel(); return true
+    }
 }
 
 // ─── RecyclerView Adapter ─────────────────────────────────────────────────────
 
 class MediaAdapter(
     private var items: List<MediaItem>,
-    private val showRemove: Boolean,
+    private val showRemove: Boolean,       // true = recently watched row (shows S·E)
     private val onClick: (MediaItem) -> Unit,
     private val onRemove: ((MediaItem) -> Unit)? = null
 ) : RecyclerView.Adapter<MediaAdapter.VH>() {
@@ -271,12 +294,15 @@ class MediaAdapter(
     override fun onBindViewHolder(h: VH, pos: Int) {
         val item = items[pos]
         h.title.text = item.title
-        // Show "S2 · E5" for TV, "Movie" for films
-        h.detail.text = if (item.type == "tv" && item.season > 0) {
+
+        // Only show S·E progress in the "recently watched" row (showRemove = true).
+        // In search results (showRemove = false) always show the generic type label.
+        h.detail.text = if (showRemove && item.type == "tv" && item.season > 0) {
             "S${item.season} · E${item.episode}"
         } else {
-            item.detail
+            item.detail   // "TV Series" or "Movie" — set at search time
         }
+
         h.typeBadge.text = if (item.type == "tv") "TV" else "MOVIE"
         h.typeBadge.setBackgroundColor(
             if (item.type == "tv") Color.parseColor("#1a6fd4") else Color.parseColor("#c0392b")
@@ -364,6 +390,8 @@ class MainActivity : AppCompatActivity() {
     private var currentPosterUrl: String? = null
 
     companion object {
+        // The embed host — used to whitelist navigation inside the WebView
+        const val EMBED_HOST = "vidsrcme.ru"
         const val EMBED_TV = "https://vidsrcme.ru/embed/tv"
         const val EMBED_MOVIE = "https://vidsrcme.ru/embed/movie"
     }
@@ -416,12 +444,15 @@ class MainActivity : AppCompatActivity() {
         episodeSpinner = findViewById(R.id.episodeSpinner)
         prevEpBtn = findViewById(R.id.prevEpisodeBtn)
         nextEpBtn = findViewById(R.id.nextEpisodeBtn)
+
+        // Ensure play button is always red (overrides any Material theme tint)
+        playButton.setBackgroundColor(Color.parseColor("#E50914"))
+        playButton.setTextColor(Color.WHITE)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        playerWebView.webViewClient = SmartWebViewClient {
-            // Called when page finishes loading — hide the black loading overlay
+        playerWebView.webViewClient = SmartWebViewClient(EMBED_HOST) {
             playerLoadingOverlay.visibility = View.GONE
         }
         playerWebView.webChromeClient = SmartChromeClient()
@@ -433,6 +464,7 @@ class MainActivity : AppCompatActivity() {
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.setSupportMultipleWindows(true)
+        // Use a desktop user-agent so the embed serves the full player
         s.userAgentString =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
@@ -441,12 +473,13 @@ class MainActivity : AppCompatActivity() {
             setAcceptThirdPartyCookies(playerWebView, true)
         }
         playerWebView.setBackgroundColor(Color.BLACK)
+        // Discard any download attempts (ads sometimes trigger downloads)
         playerWebView.setDownloadListener { _, _, _, _, _ -> }
     }
 
     private fun setupAdapters() {
         recentAdapter = MediaAdapter(
-            emptyList(), true,
+            emptyList(), showRemove = true,
             onClick = { loadContent(it.id, it.type, it.season, it.episode) },
             onRemove = { storage.remove(it.id, it.type); renderRecent() }
         )
@@ -455,7 +488,7 @@ class MainActivity : AppCompatActivity() {
         recentRecycler.adapter = recentAdapter
 
         searchAdapter = MediaAdapter(
-            emptyList(), false,
+            emptyList(), showRemove = false,
             onClick = { loadContent(it.id, it.type, 1, 1) }
         )
         searchRecycler.layoutManager = GridLayoutManager(this, 3)
@@ -488,7 +521,7 @@ class MainActivity : AppCompatActivity() {
             if (searchPage < totalPages) doSearch(lastQuery, searchPage + 1)
         }
 
-        closePlayer.setOnClickListener { closePlayer() }
+        closePlayer.setOnClickListener { closePlayerModal() }
 
         prevEpBtn.setOnClickListener {
             if (currentEpisode > 1) {
@@ -562,6 +595,7 @@ class MainActivity : AppCompatActivity() {
                 .map {
                     MediaItem(
                         it.id, it.mediaType, it.displayTitle,
+                        // Always use generic label in search — no S·E info here
                         if (it.mediaType == "tv") "TV Series" else "Movie",
                         it.posterUrl
                     )
@@ -647,6 +681,46 @@ class MainActivity : AppCompatActivity() {
 
     // ─── Player ──────────────────────────────────────────────────────────────
 
+    /**
+     * Build an HTML page that wraps the embed URL in an <iframe>.
+     * The WebView loads this local HTML — the iframe does the actual streaming.
+     * Any ad redirect can only affect the iframe, not the outer WebView page,
+     * because the outer page is a data: URI and has no navigatable URL.
+     */
+    private fun buildEmbedHtml(embedUrl: String): String {
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                * { margin:0; padding:0; box-sizing:border-box; }
+                html, body { width:100%; height:100%; background:#000; overflow:hidden; }
+                iframe {
+                  width:100%; height:100%;
+                  border:none;
+                  display:block;
+                }
+              </style>
+            </head>
+            <body>
+              <iframe
+                src="${embedUrl}"
+                allowfullscreen
+                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
+                referrerpolicy="no-referrer">
+              </iframe>
+              <script>
+                // Block any attempt by ad scripts to navigate the top frame
+                window.top.location.href = window.top.location.href;
+                Object.defineProperty(window, 'top', { get: function(){ return window; } });
+              </script>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
     private fun openPlayer(type: String) {
         playerModal.visibility = View.VISIBLE
         playerLoadingOverlay.visibility = View.VISIBLE
@@ -655,7 +729,7 @@ class MainActivity : AppCompatActivity() {
             tvControls.visibility = View.GONE
             movieControls.visibility = View.VISIBLE
             playerEpisodeInfo.text = "Movie"
-            playerWebView.loadUrl("$EMBED_MOVIE/$currentId")
+            loadEmbedUrl("$EMBED_MOVIE/$currentId")
             storage.add(
                 MediaItem(currentId, "movie", detailTitle.text.toString(),
                     "Movie", currentPosterUrl)
@@ -668,7 +742,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun closePlayer() {
+    private fun loadEmbedUrl(embedUrl: String) {
+        val html = buildEmbedHtml(embedUrl)
+        // Load as data URI so the outer page has no navigatable URL
+        playerWebView.loadDataWithBaseURL(
+            "https://$EMBED_HOST/",   // base URL so relative links resolve correctly
+            html,
+            "text/html",
+            "UTF-8",
+            null
+        )
+    }
+
+    private fun closePlayerModal() {
         playerModal.visibility = View.GONE
         playerLoadingOverlay.visibility = View.VISIBLE
         playerWebView.stopLoading()
@@ -729,7 +815,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTvFrame() {
         playerLoadingOverlay.visibility = View.VISIBLE
-        playerWebView.loadUrl("$EMBED_TV/$currentId/$currentSeason/$currentEpisode")
+        loadEmbedUrl("$EMBED_TV/$currentId/$currentSeason/$currentEpisode")
         val epInfo = "S${currentSeason} · E${currentEpisode}"
         playerEpisodeInfo.text = epInfo
         storage.add(
@@ -748,7 +834,7 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         when {
-            playerModal.visibility == View.VISIBLE -> closePlayer()
+            playerModal.visibility == View.VISIBLE -> closePlayerModal()
             detailSection.visibility == View.VISIBLE -> {
                 if (lastQuery.isNotEmpty()) {
                     detailSection.visibility = View.GONE
