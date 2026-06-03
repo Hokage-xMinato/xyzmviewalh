@@ -24,11 +24,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Block all external intents from WebView -->
-        <queries>
-            <!-- Intentionally empty — no external app queries allowed -->
-        </queries>
-
     </application>
 
 </manifest>
