@@ -145,10 +145,12 @@ class SmartWebViewClient(private val ctx: Context) : WebViewClient() {
     private val BLOCKED_SCHEMES = setOf("intent","android-app","market","tel","sms","mailto","whatsapp","tg")
     private val EMPTY = WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
 
-    private fun allowed(url: String) = try {
-        val host = Uri.parse(url).host?.lowercase() ?: return false
-        ALLOWED.any { host == it || host.endsWith(".$it") }
-    } catch (e: Exception) { false }
+    private fun allowed(url: String): Boolean {
+        return try {
+            val host = Uri.parse(url).host?.lowercase() ?: return false
+            ALLOWED.any { host == it || host.endsWith(".$it") }
+        } catch (e: Exception) { false }
+    }
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         val url = request?.url?.toString() ?: return EMPTY
