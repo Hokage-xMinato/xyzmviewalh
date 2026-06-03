@@ -154,90 +154,85 @@ class TmdbApi {
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")
 }
 
-// ─── Strict WebViewClient ─────────────────────────────────────────────────────
-// Only vidsrcme.ru (the embed origin) and cloudnestra.com (CDN for actual video)
-// are allowed to load. Every other domain — including all redirect targets — is
-// blocked with an empty response so no ads or trackers ever fire.
+// ─── WebViewClient ─────────────────────────────────────────────────────────────
+// Allow all domains needed for vidsrc to work (player, CDN, subtitles, etc.)
+// Only block non-http schemes that could open other apps.
 
-class SmartWebViewClient : WebViewClient() {
-
-    private val ALLOWED_HOSTS = setOf(
-        "vidsrcme.ru",
-        "www.vidsrcme.ru",
-        "cloudnestra.com",
-        "www.cloudnestra.com"
-    )
+class SmartWebViewClient(
+    private val onPageReady: () -> Unit
+) : WebViewClient() {
 
     private val BLOCKED_SCHEMES = setOf(
         "intent", "android-app", "market", "tel", "sms",
-        "mailto", "whatsapp", "tg", "javascript"
+        "mailto", "whatsapp", "tg"
     )
-
-    private val EMPTY = WebResourceResponse(
-        "text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0))
-    )
-
-    private fun isAllowed(url: String): Boolean {
-        return try {
-            val host = Uri.parse(url).host?.lowercase() ?: return false
-            // exact match or subdomain of allowed hosts
-            ALLOWED_HOSTS.any { allowed ->
-                host == allowed || host.endsWith(".$allowed")
-            }
-        } catch (e: Exception) { false }
-    }
 
     override fun shouldInterceptRequest(
         view: WebView?,
         request: WebResourceRequest?
     ): WebResourceResponse? {
-        val url = request?.url?.toString() ?: return EMPTY
-        val scheme = request.url.scheme?.lowercase() ?: ""
-        // Only allow http/https/data/blob; block everything else
-        if (scheme !in listOf("https", "http", "data", "blob")) return EMPTY
-        return if (isAllowed(url)) null else EMPTY
+        val scheme = request?.url?.scheme?.lowercase() ?: ""
+        // Block non-http schemes at resource level (data/blob allowed for media)
+        if (scheme !in listOf("https", "http", "data", "blob")) {
+            return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+        }
+        return null // allow everything else through
     }
 
     override fun shouldOverrideUrlLoading(
         view: WebView?,
         request: WebResourceRequest?
     ): Boolean {
-        val url = request?.url?.toString() ?: return true
-        val scheme = request.url.scheme?.lowercase() ?: ""
-        if (scheme in BLOCKED_SCHEMES) return true
-        // Block ALL top-level navigation away from allowed hosts
-        return !isAllowed(url)
+        val scheme = request?.url?.scheme?.lowercase() ?: ""
+        // Block app-launch schemes but let all http/https navigate normally in the WebView
+        return scheme in BLOCKED_SCHEMES
     }
 
     @Suppress("DEPRECATION")
     override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
         if (url == null) return true
         val scheme = try { Uri.parse(url).scheme?.lowercase() ?: "" } catch (e: Exception) { "" }
-        if (scheme in BLOCKED_SCHEMES) return true
-        return !isAllowed(url)
+        return scheme in BLOCKED_SCHEMES
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         super.onPageStarted(view, url, favicon)
-        // Kill popups and window.open at JS level too
         view?.evaluateJavascript(
             """
-            window.open = function() { return null; };
             window.alert = function() {};
             window.confirm = function() { return false; };
             """.trimIndent(), null
         )
     }
 
+    override fun onPageFinished(view: WebView?, url: String?) {
+        super.onPageFinished(view, url)
+        // Hide loading overlay once page is done
+        onPageReady()
+    }
+
     override fun onRenderProcessGone(view: WebView?, detail: RenderProcessGoneDetail?) = true
 }
 
 class SmartChromeClient : WebChromeClient() {
-    // Block all popup windows opened via window.open or target="_blank"
+    // Allow popups — vidsrc may open a player in a new window
     override fun onCreateWindow(
         view: WebView?, isDialog: Boolean,
         isUserGesture: Boolean, resultMsg: android.os.Message?
-    ) = false
+    ): Boolean {
+        // Load new window URL inside the same WebView
+        val newWebView = WebView(view!!.context)
+        newWebView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
+                view.loadUrl(req?.url?.toString() ?: return false)
+                return true
+            }
+        }
+        val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
+        transport.webView = newWebView
+        resultMsg.sendToTarget()
+        return true
+    }
 
     override fun onJsAlert(
         view: WebView?, url: String?, message: String?,
@@ -276,7 +271,12 @@ class MediaAdapter(
     override fun onBindViewHolder(h: VH, pos: Int) {
         val item = items[pos]
         h.title.text = item.title
-        h.detail.text = item.detail
+        // Show "S2 · E5" for TV, "Movie" for films
+        h.detail.text = if (item.type == "tv" && item.season > 0) {
+            "S${item.season} · E${item.episode}"
+        } else {
+            item.detail
+        }
         h.typeBadge.text = if (item.type == "tv") "TV" else "MOVIE"
         h.typeBadge.setBackgroundColor(
             if (item.type == "tv") Color.parseColor("#1a6fd4") else Color.parseColor("#c0392b")
@@ -337,6 +337,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var playerModal: FrameLayout
     private lateinit var closePlayer: ImageButton
     private lateinit var playerWebView: WebView
+    private lateinit var playerLoadingOverlay: FrameLayout
     private lateinit var playerTitle: TextView
     private lateinit var playerEpisodeInfo: TextView
     private lateinit var tvControls: LinearLayout
@@ -406,6 +407,7 @@ class MainActivity : AppCompatActivity() {
         playerModal = findViewById(R.id.playerModal)
         closePlayer = findViewById(R.id.closePlayer)
         playerWebView = findViewById(R.id.playerWebView)
+        playerLoadingOverlay = findViewById(R.id.playerLoadingOverlay)
         playerTitle = findViewById(R.id.playerTitle)
         playerEpisodeInfo = findViewById(R.id.playerEpisodeInfo)
         tvControls = findViewById(R.id.tvControls)
@@ -418,24 +420,28 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun setupWebView() {
-        playerWebView.webViewClient = SmartWebViewClient()
+        playerWebView.webViewClient = SmartWebViewClient {
+            // Called when page finishes loading — hide the black loading overlay
+            playerLoadingOverlay.visibility = View.GONE
+        }
         playerWebView.webChromeClient = SmartChromeClient()
         val s = playerWebView.settings
         s.javaScriptEnabled = true
         s.domStorageEnabled = true
         s.mediaPlaybackRequiresUserGesture = false
-        s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        s.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         s.allowFileAccess = false
         s.allowContentAccess = false
-        s.setSupportMultipleWindows(false)
+        s.setSupportMultipleWindows(true)
         s.userAgentString =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         CookieManager.getInstance().apply {
             setAcceptCookie(true)
-            setAcceptThirdPartyCookies(playerWebView, true) // needed for cloudnestra CDN
+            setAcceptThirdPartyCookies(playerWebView, true)
         }
-        playerWebView.setDownloadListener { _, _, _, _, _ -> } // swallow downloads
+        playerWebView.setBackgroundColor(Color.BLACK)
+        playerWebView.setDownloadListener { _, _, _, _, _ -> }
     }
 
     private fun setupAdapters() {
@@ -643,6 +649,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPlayer(type: String) {
         playerModal.visibility = View.VISIBLE
+        playerLoadingOverlay.visibility = View.VISIBLE
         playerTitle.text = detailTitle.text
         if (type == "movie") {
             tvControls.visibility = View.GONE
@@ -663,6 +670,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun closePlayer() {
         playerModal.visibility = View.GONE
+        playerLoadingOverlay.visibility = View.VISIBLE
         playerWebView.stopLoading()
         playerWebView.loadUrl("about:blank")
     }
@@ -716,11 +724,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun syncSpinnersToState() {
-        // Rebuild so spinners reflect currentSeason/currentEpisode without firing listeners
         buildSpinners()
     }
 
     private fun updateTvFrame() {
+        playerLoadingOverlay.visibility = View.VISIBLE
         playerWebView.loadUrl("$EMBED_TV/$currentId/$currentSeason/$currentEpisode")
         val epInfo = "S${currentSeason} · E${currentEpisode}"
         playerEpisodeInfo.text = epInfo
