@@ -20,7 +20,7 @@
             android:id="@+id/homeBtn"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:src="@android:drawable/ic_menu_home"
+            android:src="@drawable/ic_home"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="#E50914"
             android:contentDescription="Home"
