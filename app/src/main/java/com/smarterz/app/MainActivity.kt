@@ -313,7 +313,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homeBtn: ImageButton
     private lateinit var searchInput: EditText
     private lateinit var searchBtn: ImageButton
-    private lateinit var homeSection: LinearLayout
+    private lateinit var homeSection: ScrollView
     private lateinit var recentRecycler: RecyclerView
     private lateinit var recentEmpty: TextView
     private lateinit var searchSection: LinearLayout
@@ -323,7 +323,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prevPageBtn: Button
     private lateinit var nextPageBtn: Button
     private lateinit var pageIndicator: TextView
-    private lateinit var detailSection: LinearLayout
+    private lateinit var detailSection: ScrollView
     private lateinit var detailLoading: ProgressBar
     private lateinit var detailContent: LinearLayout
     private lateinit var detailPoster: ImageView
